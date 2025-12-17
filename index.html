@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>羊了个羊 - 网页复刻版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #c4f0c5;
+            background-image: radial-gradient(#97d798 15%, transparent 16%), radial-gradient(#97d798 15%, transparent 16%);
+            background-size: 60px 60px;
+            background-position: 0 0, 30px 30px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #game-area {
+            position: relative;
+            width: 320px;
+            height: 420px;
+            margin: 10px auto;
+            /* border: 1px dashed rgba(0,0,0,0.1); */
+        }
+
+        .card {
+            width: 42px;
+            height: 46px;
+            position: absolute;
+            background-color: white;
+            border: 2px solid #333;
+            border-bottom: 4px solid #333;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: top 0.2s, left 0.2s, transform 0.2s, filter 0.2s;
+            z-index: 10;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            padding-bottom: 2px;
+        }
+
+        .card.disabled {
+            filter: brightness(0.4);
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .card:active {
+            transform: scale(0.95);
+        }
+
+        #slot-area {
+            width: 340px;
+            height: 70px;
+            background-color: #3a2e24;
+            border: 4px solid #5d4037;
+            border-radius: 12px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 0 10px;
+            box-sizing: border-box;
+            position: relative;
+            gap: 2px;
+        }
+
+        #slot-area .card {
+            position: relative;
+            top: auto !important;
+            left: auto !important;
+            margin: 0;
+            width: 40px;
+            height: 44px;
+            border-bottom: 2px solid #333;
+            transform: none !important;
+        }
+
+        @keyframes pop-out {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.4); opacity: 0.8; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .pop-anim {
+            animation: pop-out 0.3s forwards;
+        }
+
+        .shake-screen {
+            animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        .modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            visibility: hidden;
+            opacity: 0;
+            transition: 0.3s;
+        }
+        .modal.active {
+            visibility: visible;
+            opacity: 1;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            max-width: 80%;
+            border: 4px solid #333;
+            box-shadow: 0 10px 0 #333;
+        }
+
+        .music-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            z-index: 50;
+            font-size: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* 关卡指示器 */
+        .level-badge {
+            display: inline-block;
+            background: #FFD700;
+            border: 2px solid #B8860B;
+            color: #8B4500;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-top: 5px;
+            box-shadow: 0 2px 0 #B8860B;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen relative">
+
+    <audio id="bgm" loop>
+        <source src="https://codeskulptor-demos.commondatastorage.googleapis.com/GalaxyInvaders/theme_01.mp3" type="audio/mpeg">
+    </audio>
+    <div class="music-btn" onclick="toggleMusic()" id="music-btn">🔇</div>
+
+    <div class="mt-6 mb-2 text-center select-none">
+        <h1 class="text-3xl font-bold text-gray-800 tracking-wider">🐑 羊了个羊 🐑</h1>
+        <div class="level-badge" id="level-display">第 1 关</div>
+    </div>
+
+    <div id="game-area"></div>
+
+    <div class="mt-auto mb-10">
+        <div id="slot-area"></div>
+    </div>
+
+    <div id="result-modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modal-title" class="text-3xl font-bold mb-4">游戏结束</h2>
+            <p id="modal-desc" class="text-lg mb-6">槽位满了！</p>
+            <button id="modal-btn" onclick="retryLevel()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-xl border-b-4 border-green-700 active:border-b-0 active:translate-y-1 transition-all">
+                再来一次
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- 核心配置 ---
+        const ICONS = ['🥬', '🥕', '🌽', '🪵', '🔥', '🧶', '🧴', '✂️', '🥛', '🐑', '🔔', '🧤', '🎸', '🎲', '🧩'];
+        
+        // 关卡配置表
+        const LEVELS = [
+            { id: 1, layout: 'pyramid', layers: 3, types: 3, density: 'low' },    // 教学关
+            { id: 2, layout: 'grid', layers: 4, types: 5, density: 'low' },       // 简单
+            { id: 3, layout: 'spiral', layers: 5, types: 6, density: 'medium' },  // 简单进阶
+            { id: 4, layout: 'columns', layers: 6, types: 8, density: 'medium' }, // 适中
+            { id: 5, layout: 'wall', layers: 7, types: 8, density: 'medium' },    // 适中
+            { id: 6, layout: 'pyramid_big', layers: 8, types: 10, density: 'high' }, // 困难
+            { id: 7, layout: 'random_clusters', layers: 10, types: 10, density: 'high' }, // 困难
+            { id: 8, layout: 'spiral_dense', layers: 12, types: 12, density: 'high' },    // 噩梦
+            { id: 9, layout: 'chaos', layers: 15, types: 12, density: 'ultra' },          // 地狱前奏
+            { id: 10, layout: 'hell', layers: 20, types: 15, density: 'ultra' }           // 地狱
+        ];
+
+        const CONFIG = {
+            cardWidth: 42,
+            cardHeight: 46,
+            slotCapacity: 7,
+            padding: 2
+        };
+
+        // --- 全局状态 ---
+        let currentLevelIndex = 0; // 0 代表第一关
+        let allCards = [];
+        let slotCards = [];
+        let gameActive = false;
+        let isMusicPlaying = false;
+        
+        // DOM 元素
+        const gameArea = document.getElementById('game-area');
+        const slotArea = document.getElementById('slot-area');
+        const modal = document.getElementById('result-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalDesc = document.getElementById('modal-desc');
+        const modalBtn = document.getElementById('modal-btn');
+        const bgm = document.getElementById('bgm');
+        const musicBtn = document.getElementById('music-btn');
+        const levelDisplay = document.getElementById('level-display');
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // --- 音效系统 ---
+        function playPopSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playClickSound() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.frequency.value = 800;
+            gain.gain.value = 0.05;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        function toggleMusic() {
+            if (isMusicPlaying) {
+                bgm.pause();
+                musicBtn.innerText = "🔇";
+            } else {
+                bgm.play().catch(() => {});
+                musicBtn.innerText = "🎵";
+            }
+            isMusicPlaying = !isMusicPlaying;
+        }
+
+        // --- 核心逻辑: 关卡初始化 ---
+
+        function initLevel(levelIdx) {
+            currentLevelIndex = levelIdx;
+            const levelConfig = LEVELS[levelIdx] || LEVELS[0];
+            
+            levelDisplay.innerText = `第 ${levelConfig.id} 关 (${getDifficultyLabel(levelConfig.id)})`;
+            
+            gameActive = true;
+            modal.classList.remove('active');
+            gameArea.innerHTML = '';
+            slotArea.innerHTML = '';
+            allCards = [];
+            slotCards = [];
+
+            // 1. 生成空间布局 (Nodes)
+            let layoutNodes = generateLayoutNodes(levelConfig);
+
+            // 2. 确保节点数量能被 3 整除 (否则无法完全消除)
+            while (layoutNodes.length % 3 !== 0) {
+                // 如果多余，移除最上面的 (id最大的)
+                layoutNodes.pop(); 
+            }
+            if (layoutNodes.length === 0) return; // 异常保护
+
+            // 3. 填充值 (防死局算法)
+            assignValuesSolvable(layoutNodes, levelConfig.types);
+
+            // 4. 渲染 DOM
+            layoutNodes.forEach(node => {
+                createCardDOM(node);
+            });
+
+            // 5. 初始遮挡计算
+            updateCardStates();
+        }
+
+        function getDifficultyLabel(id) {
+            if(id <= 3) return "简单";
+            if(id <= 5) return "适中";
+            if(id <= 8) return "困难";
+            return "地狱";
+        }
+
+        // --- 布局生成器 (核心升级) ---
+        function generateLayoutNodes(config) {
+            let nodes = [];
+            let idCounter = 0;
+            const centerX = 320 / 2 - CONFIG.cardWidth / 2;
+            const centerY = 420 / 2 - CONFIG.cardHeight / 2;
+
+            // 基础布局模式
+            const layers = config.layers;
+            
+            for (let l = 0; l < layers; l++) {
+                // 随着层数增加，偏移量或分布方式变化
+                let pattern = config.layout;
+                
+                // 针对不同布局生成坐标
+                let points = [];
+                
+                if (pattern.startsWith('pyramid')) {
+                    // 金字塔：下大上小
+                    let size = layers - l + 1; 
+                    if(config.density === 'high') size = Math.max(3, layers - Math.floor(l/2));
+                    
+                    let offsetX = centerX - (size * CONFIG.cardWidth)/2;
+                    let offsetY = centerY - (size * CONFIG.cardHeight)/2;
+                    
+                    // 奇偶错位
+                    if (l % 2 !== 0) {
+                        offsetX += CONFIG.cardWidth / 2;
+                        offsetY += CONFIG.cardHeight / 2;
+                    }
+
+                    for(let r=0; r<size; r++) {
+                        for(let c=0; c<size; c++) {
+                            points.push({x: offsetX + c*CONFIG.cardWidth, y: offsetY + r*CONFIG.cardHeight});
+                        }
+                    }
+                } else if (pattern === 'grid') {
+                    // 规则网格，每层完全重叠或微偏移
+                    let size = 4;
+                    let offsetX = centerX - (size * CONFIG.cardWidth)/2;
+                    let offsetY = centerY - (size * CONFIG.cardHeight)/2;
+                    // 每层随机偏移一点点，防止太整齐
+                    let shiftX = (Math.random()-0.5) * 10;
+                    let shiftY = (Math.random()-0.5) * 10;
+                     for(let r=0; r<size; r++) {
+                        for(let c=0; c<size; c++) {
+                            points.push({x: offsetX + c*CONFIG.cardWidth + shiftX, y: offsetY + r*CONFIG.cardHeight + shiftY});
+                        }
+                    }
+                } else if (pattern === 'spiral') {
+                    // 螺旋分布
+                    let count = 15 - l;
+                    let angleStep = 0.5;
+                    let radiusStep = 3;
+                    for(let i=0; i<count; i++) {
+                        let angle = i * angleStep + l;
+                        let radius = i * radiusStep + 10;
+                        points.push({
+                            x: centerX + Math.cos(angle) * radius,
+                            y: centerY + Math.sin(angle) * radius
+                        });
+                    }
+                } else if (pattern === 'columns') {
+                    // 左右两堆
+                    let cols = 2; 
+                    let rows = 6 - Math.floor(l/2);
+                    for(let i=0; i<cols; i++) {
+                        for(let r=0; r<rows; r++) {
+                             points.push({
+                                x: centerX + (i===0 ? -60 : 60), 
+                                y: centerY - (rows*CONFIG.cardHeight)/2 + r*CONFIG.cardHeight + (l%2)*10
+                            });
+                        }
+                    }
+                } else if (pattern === 'hell') {
+                    // 地狱模式：超密集 + 随机微扰
+                    let size = 6;
+                    for(let r=0; r<size; r++) {
+                        for(let c=0; c<size; c++) {
+                            // 极度密集的重叠
+                            points.push({
+                                x: centerX - 100 + c*35 + (Math.random()-0.5)*10, 
+                                y: centerY - 120 + r*40 + (Math.random()-0.5)*10
+                            });
+                        }
+                    }
+                } else {
+                    // Default / Chaos
+                    let count = 20 - l;
+                    for(let i=0; i<count; i++) {
+                        points.push({
+                            x: Math.random() * (320 - CONFIG.cardWidth),
+                            y: Math.random() * (400 - CONFIG.cardHeight)
+                        });
+                    }
+                }
+
+                // 将坐标转换为节点
+                points.forEach(p => {
+                    nodes.push({
+                        id: idCounter++,
+                        x: p.x,
+                        y: p.y,
+                        layer: l, // 层级越高越在上面？CSS z-index是越大越上，但物理逻辑通常0是底。
+                                  // 这里我们统一：l 越大 z-index 越大，代表在上面。
+                        type: null,
+                        coveredBy: [], // 依赖分析
+                        isClicked: false
+                    });
+                });
+            }
+
+            // 乱序ID，避免数组顺序即层级顺序
+            // nodes.sort(() => Math.random() - 0.5); 
+            // 不，先不乱序，因为我们需要保持层级逻辑来计算遮挡
+            return nodes;
+        }
+
+        // --- 防死局赋值算法 (逆向消除模拟) ---
+        function assignValuesSolvable(nodes, typeCount) {
+            // 1. 构建遮挡关系图
+            // 谁压着谁？
+            // 如果 A 在 B 上面 (A.layer > B.layer) 且 A 遮挡 B
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = 0; j < nodes.length; j++) {
+                    if (i === j) continue;
+                    let upper = nodes[i];
+                    let lower = nodes[j];
+                    
+                    if (upper.layer > lower.layer) {
+                        if (isOverlapping({x:upper.x, y:upper.y, width:CONFIG.cardWidth, height:CONFIG.cardHeight}, 
+                                          {x:lower.x, y:lower.y, width:CONFIG.cardWidth, height:CONFIG.cardHeight})) {
+                            lower.coveredBy.push(upper.id);
+                        }
+                    }
+                }
+            }
+
+            // 2. 模拟消除过程
+            // 每次找出“当前没有被压住”的节点，随机选3个赋予相同值
+            // 这是一个“剥洋葱”的过程
+            
+            // 为了模拟真实点击，我们需要一个动态的 coveredBy 计数
+            let tempCoveredCounts = {};
+            nodes.forEach(n => tempCoveredCounts[n.id] = n.coveredBy.length);
+
+            let unassignedNodes = [...nodes];
+            let assignedCount = 0;
+            
+            // 可用的图标池
+            let currentIconIdx = 0;
+
+            while (unassignedNodes.length >= 3) {
+                // 找出当前没有任何东西压在上面的节点 (Candidates)
+                // 并且这些节点还没有被赋值
+                let candidates = unassignedNodes.filter(n => tempCoveredCounts[n.id] === 0);
+                
+                if (candidates.length < 3) {
+                    // 特殊情况：结构形成了死锁（比如互相压），或者只剩<3个
+                    // 这种布局生成器可能产生微小死锁。
+                    // 强制破解：从 unassignedNodes 里硬选 3 个层级最高的
+                    candidates = unassignedNodes.sort((a,b) => b.layer - a.layer).slice(0, 10); // 取前10个高的混一下
+                }
+
+                // 随机选 3 个
+                let picks = [];
+                for(let k=0; k<3; k++) {
+                    if(candidates.length === 0) break;
+                    let r = Math.floor(Math.random() * candidates.length);
+                    picks.push(candidates[r]);
+                    candidates.splice(r, 1); // 避免重复选
+                }
+                
+                if (picks.length < 3) break; // 应该不会发生，除非总数不对
+
+                // 赋予它们相同的值
+                let icon = ICONS[currentIconIdx % typeCount];
+                // 增加一点随机性，不一定按顺序
+                if (Math.random() > 0.5) currentIconIdx++; 
+
+                picks.forEach(node => {
+                    node.type = icon;
+                    // 从待分配列表中移除
+                    let idx = unassignedNodes.findIndex(n => n.id === node.id);
+                    if(idx > -1) unassignedNodes.splice(idx, 1);
+                    
+                    // 关键：模拟这些卡片被移除了，解放下面的卡片
+                    // 实际上我们不需要真移除，因为是“赋值”，
+                    // 但为了计算下一轮的 candidates，我们需要假装它们没了。
+                    // 谁被这个 node 压着？这需要反向查找 "who covers me" 不好找
+                    // 不如直接暴力重算或者维护双向图。
+                    // 简单暴力：遍历 unassignedNodes，看他们的 coveredBy 里有没有 picks 中的 ID
+                    // 有的话，计数减一
+                });
+
+                // 更新遮挡计数 (模拟 picks 被消除)
+                // 这是一个 O(N*M) 操作，但 N 较小 (200以内) 可接受
+                let pickIds = picks.map(n => n.id);
+                unassignedNodes.forEach(n => {
+                    // n.coveredBy 包含 picks 中的 id 吗？
+                    // 过滤掉已消除的 ID
+                    // 这里简化：coveredBy 是静态数组。我们需要动态检查 coveredBy 里的 id 是否还在 unassignedNodes 里
+                    // 如果 n.coveredBy 中所有的 id 都不在 unassignedNodes 里了，那 n 就自由了
+                    let coverCount = 0;
+                    n.coveredBy.forEach(coverId => {
+                         // 如果压着我的这张牌，还在“待赋值（即未消除）”列表中，那我还不能动
+                         // 这里的逻辑有点绕：我们在做的是“赋值”。
+                         // 赋值的顺序 = 消除的顺序。
+                         // 所以如果 A 压着 B，必须先给 A 赋值，A 才能被消除。
+                         if (unassignedNodes.some(un => un.id === coverId)) {
+                             coverCount++;
+                         }
+                    });
+                    tempCoveredCounts[n.id] = coverCount;
+                });
+            }
+
+            // 兜底：如果还有剩余（因为 candidates < 3 强行退出等），随便填
+            unassignedNodes.forEach((node, i) => {
+                node.type = ICONS[i % typeCount];
+            });
+        }
+
+        function createCardDOM(node) {
+            const card = document.createElement('div');
+            card.classList.add('card');
+            card.innerText = node.type;
+            card.style.left = node.x + 'px';
+            card.style.top = node.y + 'px';
+            card.style.zIndex = node.layer;
+            card.dataset.id = node.id;
+            
+            // 存入全局对象
+            allCards.push({
+                ...node,
+                width: CONFIG.cardWidth,
+                height: CONFIG.cardHeight,
+                el: card,
+                inSlot: false
+            });
+
+            card.onclick = () => handleCardClick(node.id);
+            gameArea.appendChild(card);
+        }
+
+        // --- 游戏运行时逻辑 ---
+
+        function updateCardStates() {
+            const activeCards = allCards.filter(c => !c.inSlot);
+            activeCards.forEach(card => {
+                let isCovered = false;
+                for (let other of activeCards) {
+                    if (other.id === card.id) continue;
+                    if (other.layer <= card.layer) continue; 
+                    
+                    if (isOverlapping(card, other)) {
+                        isCovered = true;
+                        break;
+                    }
+                }
+                if (isCovered) {
+                    card.el.classList.add('disabled');
+                } else {
+                    card.el.classList.remove('disabled');
+                }
+            });
+        }
+
+        function isOverlapping(rect1, rect2) {
+            const padding = CONFIG.padding; 
+            return !(rect1.x + rect1.width - padding <= rect2.x + padding ||
+                     rect1.x + padding >= rect2.x + rect2.width - padding ||
+                     rect1.y + rect1.height - padding <= rect2.y + padding ||
+                     rect1.y + padding >= rect2.y + rect2.height - padding);
+        }
+
+        function handleCardClick(id) {
+            if (!gameActive) return;
+            const cardObj = allCards.find(c => c.id === id);
+            if (!cardObj || cardObj.el.classList.contains('disabled')) return;
+            if (slotCards.length >= CONFIG.slotCapacity) return;
+
+            if(isMusicPlaying) playClickSound();
+
+            cardObj.inSlot = true;
+            updateCardStates();
+            slotCards.push(cardObj);
+            renderSlot();
+            checkMatch();
+            
+            // 检查胜负放在 match 之后
+            setTimeout(checkGameState, 350); 
+        }
+
+        function renderSlot() {
+            slotCards.forEach(c => {
+                if (!slotArea.contains(c.el)) {
+                    c.el.style.position = 'relative';
+                    c.el.style.left = 'auto';
+                    c.el.style.top = 'auto';
+                    c.el.style.zIndex = 'auto';
+                    c.el.classList.remove('disabled');
+                    slotArea.appendChild(c.el);
+                }
+            });
+        }
+
+        function checkMatch() {
+            let counts = {};
+            slotCards.forEach(c => counts[c.type] = (counts[c.type] || 0) + 1);
+
+            for (let type in counts) {
+                if (counts[type] >= 3) {
+                    if(isMusicPlaying) playPopSound();
+                    if (navigator.vibrate) navigator.vibrate(200);
+                    document.body.classList.add('shake-screen');
+                    setTimeout(() => document.body.classList.remove('shake-screen'), 300);
+
+                    // 找出前3个
+                    let matchIndices = [];
+                    let matchCards = [];
+                    // 为了保证卡槽里的顺序不乱，我们遍历 slotCards
+                    for(let c of slotCards) {
+                        if(c.type === type && matchCards.length < 3) {
+                            matchCards.push(c);
+                        }
+                    }
+
+                    matchCards.forEach(c => {
+                        c.el.classList.add('pop-anim');
+                        setTimeout(() => {
+                            if(slotArea.contains(c.el)) slotArea.removeChild(c.el);
+                        }, 300);
+                    });
+
+                    // 从 slotCards 中移除
+                    // 这里的过滤要小心，只移除那3个特定的实例
+                    let removedIds = matchCards.map(c => c.id);
+                    slotCards = slotCards.filter(c => !removedIds.includes(c.id));
+                }
+            }
+        }
+
+        function checkGameState() {
+            const remaining = allCards.filter(c => !c.inSlot);
+            
+            // 胜利条件
+            if (remaining.length === 0 && slotCards.length === 0) {
+                gameActive = false;
+                if (currentLevelIndex < LEVELS.length - 1) {
+                    modalTitle.innerText = "🎉 关卡通过！";
+                    modalDesc.innerText = `准备好挑战第 ${currentLevelIndex + 2} 关了吗？`;
+                    modalBtn.innerText = "下一关";
+                    modalBtn.onclick = nextLevel;
+                } else {
+                    modalTitle.innerText = "🏆 游戏通关！";
+                    modalDesc.innerText = "你是真正的羊群之王！";
+                    modalBtn.innerText = "从头开始";
+                    modalBtn.onclick = () => initLevel(0);
+                }
+                modal.classList.add('active');
+                return;
+            }
+
+            // 失败条件
+            if (slotCards.length >= CONFIG.slotCapacity) {
+                // 确保没有正在进行的消除动画再判负
+                // 这里简单处理
+                gameActive = false;
+                modalTitle.innerText = "😭 槽位已满！";
+                modalDesc.innerText = "别灰心，这关有点难。";
+                modalBtn.innerText = "重试本关";
+                modalBtn.onclick = retryLevel;
+                modal.classList.add('active');
+            }
+        }
+
+        function retryLevel() {
+            initLevel(currentLevelIndex);
+        }
+
+        function nextLevel() {
+            initLevel(currentLevelIndex + 1);
+        }
+
+        // 启动第一关
+        window.onload = () => initLevel(0);
+    </script>
+</body>
+</html>
